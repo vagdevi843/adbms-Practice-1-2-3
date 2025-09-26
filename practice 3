@@ -1,0 +1,98 @@
+-- ==============================================
+-- Practice 3 - Transactions & Concurrency Control
+-- ==============================================
+
+-- Step 1: Create StudentEnrollments table
+DROP TABLE IF EXISTS StudentEnrollments;
+
+CREATE TABLE StudentEnrollments (
+    student_id INT PRIMARY KEY,
+    student_name VARCHAR(100),
+    course_id VARCHAR(10),
+    enrollment_date DATE
+);
+
+-- Step 2: Insert sample data
+INSERT INTO StudentEnrollments (student_id, student_name, course_id, enrollment_date)
+VALUES
+(1, 'Ashish',  'CSE101', '2024-06-01'),
+(2, 'Smaran',  'CSE102', '2024-06-01'),
+(3, 'Vaibhav', 'CSE103', '2024-06-01');
+
+-- Verify data
+SELECT * FROM StudentEnrollments;
+
+-- ======================================================
+-- Part A: Simulating Deadlock (Run in 2 Sessions)
+-- ======================================================
+
+-- SESSION 1 (User A)
+-- START TRANSACTION;
+-- UPDATE StudentEnrollments SET course_id = 'CSE201' WHERE student_id = 1;
+-- (pause, then run next)
+-- UPDATE StudentEnrollments SET course_id = 'CSE301' WHERE student_id = 2;
+
+-- SESSION 2 (User B)
+-- START TRANSACTION;
+-- UPDATE StudentEnrollments SET course_id = 'CSE202' WHERE student_id = 2;
+-- (pause, then run next)
+-- UPDATE StudentEnrollments SET course_id = 'CSE302' WHERE student_id = 1;
+
+-- Expected Output: One transaction is rolled back with error:
+-- ERROR 1213 (40001): Deadlock found when trying to get lock; try restarting transaction
+
+
+-- ======================================================
+-- Part B: MVCC Snapshot Read
+-- ======================================================
+
+-- SESSION 1 (Reader)
+-- SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+-- START TRANSACTION;
+-- SELECT * FROM StudentEnrollments WHERE student_id = 1;
+-- (Keeps old value until commit)
+
+-- SESSION 2 (Writer)
+-- START TRANSACTION;
+-- UPDATE StudentEnrollments SET enrollment_date = '2024-07-10' WHERE student_id = 1;
+-- COMMIT;
+
+-- Back to SESSION 1
+-- SELECT * FROM StudentEnrollments WHERE student_id = 1;
+-- COMMIT;
+
+-- Expected Output:
+-- Session 1 keeps seeing enrollment_date = '2024-06-01'
+-- Session 2 successfully updates to '2024-07-10'
+
+
+-- ======================================================
+-- Part C: Compare Locking vs MVCC
+-- ======================================================
+
+-- Case 1: With SELECT FOR UPDATE (Locking)
+-- SESSION 1
+-- START TRANSACTION;
+-- SELECT * FROM StudentEnrollments WHERE student_id = 1 FOR UPDATE;
+
+-- SESSION 2
+-- UPDATE StudentEnrollments SET course_id = 'CSE401' WHERE student_id = 1;
+-- (❌ Blocked until Session 1 commits)
+
+-- Case 2: With MVCC (No Blocking)
+-- SESSION 1
+-- SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+-- START TRANSACTION;
+-- SELECT * FROM StudentEnrollments WHERE student_id = 1;
+
+-- SESSION 2
+-- UPDATE StudentEnrollments SET course_id = 'CSE402' WHERE student_id = 1;
+-- COMMIT;
+
+-- Back to Session 1
+-- SELECT * FROM StudentEnrollments WHERE student_id = 1;
+-- COMMIT;
+
+-- Expected Output:
+-- Without MVCC: Reader blocks until writer commits.
+-- With MVCC: Reader sees old snapshot while writer updates concurrently.
